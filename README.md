@@ -42,11 +42,11 @@ VisionCruise‑V1/
 
 **接线图**
 
-![Wiring](assets/wiring.png)
+![Wiring](image/接线示意图.png)
 
 **实拍图**
 
-![Car](assets/car.jpg)
+![Car](image/小车实拍图.jpg)
 
 ---
 
