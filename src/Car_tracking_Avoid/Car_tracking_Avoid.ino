@@ -34,35 +34,28 @@
 // 定义巡线阈值 Define the patrol threshold
 const int Threshold = 500;
 
-float Distance = 0.0;
-const float FarDistance = 50.0;
-const float MidDistance = 30.0;
+// 定义距离阈值 Define distance thresholds
 const float NearDistance = 15.0;
 
-bool bCar_Switch = false;
-
+// 定义小车速度和超时参数 Define car speed and timeout parameters
 int iCarSpeed = 50;
 unsigned int uTimeOut = 0;
 
-// 新增：小车工作状态枚举
+// 定义全局变量 Define global variables
+float Distance = 0.0;
+bool bCar_Switch = false;
+
+// 枚举小车工作状态 Enumerate car working states
 enum CarState {
-  CAR_STOP,        // 停止状态
-  CAR_ROTATING,    // 旋转270度阶段
-  CAR_FINDING_LINE,// 寻找黑线阶段
-  CAR_TRACKING,    // 巡线阶段
-  CAR_AVOIDING     // 避障绕行阶段
+  CAR_STOP,               // 停止状态 Stop state
+  CAR_INITIAL_ROTATING,   // 初始旋转270度阶段 Initial 270-degree rotation stage
+  CAR_SEARCH_LINE_LEFT,   // 左转寻找黑线阶段 Left turn searching for black line stage
+  CAR_SEARCH_LINE_RIGHT,  // 右转寻找黑线阶段 Right turn searching for black line stage
+  CAR_TRACKING,           // 巡线阶段 Line tracking stage
+  CAR_AVOIDING            // 避障绕行阶段 Obstacle avoidance stage
 };
 
-CarState currentCarState = CAR_STOP;  // 当前小车状态
-
-// 新增：旋转和避障相关变量
-unsigned long rotateStartTime = 0;
-const unsigned long ROTATE_270_TIME = 2000;  // 旋转270度所需时间（毫秒），根据测试调整
-
-unsigned long avoidStartTime = 0;
-const unsigned long AVOID_TURN_TIME = 800;   // 避障转弯时间（毫秒），根据测试调整
-const unsigned long AVOID_FORWARD_TIME = 1500; // 避障前进时间（毫秒），根据测试调整
-int avoidStep = 0;  // 避障步骤：0-左转, 1-前进, 2-右转恢复
+CarState currentCarState = CAR_STOP;  // 当前小车状态 Current car state
 
 // 枚举全向小车的常见运动方式 Enumerate the common movement modes of omnidirectional cars
 enum OmniDirectionalCar {
@@ -82,37 +75,51 @@ enum OmniDirectionalCar {
 // 创建Adafruit_PWMServoDriver类的实例 Create an instance of the Adafruit_PWMServoDriver class
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver(Bottom_Layer_Driver_ADDR);
 
-void setMotorSpeed(uint16_t motor_forward_pin, uint16_t motor_backward_pin, int motor_speed);  // 设置单个电机速度 Setting the Motor Speed
-void setCarMove(uint8_t Movement, int Speed);                                                  // 设置小车运动方式和速度 Set the car movement mode and speed
-int getKeyState(uint8_t pin);                                                                  // 获取按键状态 Get key(button) status
-bool setCarSwitch();                                                                           // 设置小车功能开关 Set the car function switch
-float getDistance(int trigPin, int echoPin);                                                   // 获取超声波距离 Get ultrasonic distance
-void PatrolCar(int iLeftPin, int iMidPin, int iRightPin);                                      // 小车巡线功能 Car line patrol function
-void Car_Track_Avoid();                                                                        // 小车巡线避障功能 Tracking and obstacle avoidance function
-void startRotationSequence();                                                                  // 开始旋转序列 Start rotation sequence
-void updateRotationState();                                                                    // 更新旋转状态 Update rotation state
-bool checkLineDetected();                                                                      // 检查是否检测到黑线 Check if black line is detected
-void performAvoidance();                                                                       // 执行避障绕行 Perform avoidance maneuver
+// 定义旋转和避障相关参数 Define rotation and avoidance related parameters
+unsigned long rotateStartTime = 0;
+const unsigned long ROTATE_270_TIME = 2500;  // 旋转270度所需时间 Time required for 270-degree rotation
+
+unsigned long avoidStartTime = 0;
+const unsigned long AVOID_TURN_TIME = 800;   // 避障转弯时间 Obstacle avoidance turning time
+const unsigned long AVOID_FORWARD_TIME = 1500; // 避障前进时间 Obstacle avoidance forward time
+int avoidStep = 0;  // 避障步骤 Avoidance step
+
+// 函数声明 Function declarations
+void setMotorSpeed(uint16_t motor_forward_pin, uint16_t motor_backward_pin, int motor_speed);
+void setCarMove(uint8_t Movement, int Speed);
+int getKeyState(uint8_t pin);
+bool setCarSwitch();
+float getDistance(int trigPin, int echoPin);
+void PatrolCar(int iLeftPin, int iMidPin, int iRightPin);
+void startRotationSequence();
+void updateRotationState();
+bool checkLineDetected();
+void performAvoidance();
+void searchLineLeft();
+void searchLineRight();
 
 void setup() {
-  Serial.begin(115200);         // 初始化串口 Initialize serial communication
-  Wire.begin();                   // 初始化I2C通讯 Initialize I2C communication
-  delay(1000);                    // 如果小车功能异常，可以增加这个延时 If the function is abnormal, you can increase the delay
-  pwm.begin();                    // PWM初始化 Initialize the Pulse Width Modulation (PWM) library
-  pwm.setPWMFreq(PWM_FREQUENCY);  // 设置PWM频率 Set the PWM frequency
-  setCarMove(STOP, 0);            // 设置小车停止状态 Set the car to stop state
+  pinMode(KEY_PIN, INPUT_PULLUP);     // 设置按键引脚为上拉输入 Set key pin as input with pull-up
+  Wire.begin();                       // 初始化I2C通讯 Initialize I2C communication
+  delay(1000);                        // 延时等待系统稳定 Delay for system stability
+  pwm.begin();                        // PWM初始化 Initialize the Pulse Width Modulation (PWM) library
+  pwm.setPWMFreq(PWM_FREQUENCY);      // 设置PWM频率 Set the PWM frequency
+  setCarMove(STOP, 0);                // 设置小车停止状态 Set the car to stop state
 }
 
 void loop() {
   // 按键控制小车功能启停 Key control car function start and stop
   if (setCarSwitch()) {
-    // 根据当前状态执行相应操作
+    // 根据当前状态执行相应操作 Execute corresponding operations according to current state
     switch (currentCarState) {
-      case CAR_ROTATING:
+      case CAR_INITIAL_ROTATING:
         updateRotationState();
         break;
-      case CAR_FINDING_LINE:
-        Car_Find_Line();
+      case CAR_SEARCH_LINE_LEFT:
+        searchLineLeft();
+        break;
+      case CAR_SEARCH_LINE_RIGHT:
+        searchLineRight();
         break;
       case CAR_TRACKING:
         Car_Track_Avoid();
@@ -281,57 +288,43 @@ void PatrolCar(int iLeftPin, int iMidPin, int iRightPin) {
   int middleValue = analogRead(iMidPin);
   int rightValue = analogRead(iRightPin);
 
-  // 修正逻辑：数值越大表示越黑（在线上的值）
-  bool leftOnLine = (leftValue > Threshold);    // 左边传感器在黑线上
-  bool midOnLine = (middleValue > Threshold);   // 中间传感器在黑线上  
-  bool rightOnLine = (rightValue > Threshold);  // 右边传感器在黑线上
-
-  // 图形化表示当前状态
-  Serial.print(leftOnLine ? "●" : "○");
-  Serial.print(midOnLine ? "●" : "○"); 
-  Serial.print(rightOnLine ? "●" : "○");
-  Serial.print(" - ");
+  // 修正逻辑：数值越大表示越黑（在线上的值） Corrected logic: larger value means darker (on the line)
+  bool leftOnLine = (leftValue > Threshold);    // 左边传感器在黑线上 Left sensor on black line
+  bool midOnLine = (middleValue > Threshold);   // 中间传感器在黑线上 Middle sensor on black line
+  bool rightOnLine = (rightValue > Threshold);  // 右边传感器在黑线上 Right sensor on black line
 
   if (!leftOnLine && midOnLine && !rightOnLine) {
-    // ○●○ 线在中间：直行
-    Serial.println("Forward");
+    // ○●○ 线在中间：直行 Line in middle: go straight
     setCarMove(FORWARD, iCarSpeed);
   }
   else if (leftOnLine && midOnLine && !rightOnLine) {
-    // ●●○ 线偏左：向左转
-    Serial.println("Turn Left");
+    // ●●○ 线偏左：向左转 Line偏向left: turn left
     setCarMove(LEFT, iCarSpeed);
   }
   else if (!leftOnLine && midOnLine && rightOnLine) {
-    // ○●● 线偏右：向右转
-    Serial.println("Turn Right"); 
+    // ○●● 线偏右：向右转 Line偏向right: turn right
     setCarMove(RIGHT, iCarSpeed);
   }
   else if (leftOnLine && !midOnLine && !rightOnLine) {
-    // ●○○ 只有左边在线：大角度左转
-    Serial.println("Sharp Left");
+    // ●○○ 只有左边在线：大角度左转 Only left on line: sharp left turn
     setCarMove(LEFT_ROTATE, iCarSpeed);
   }
   else if (!leftOnLine && !midOnLine && rightOnLine) {
-    // ○○● 只有右边在线：大角度右转  
-    Serial.println("Sharp Right");
+    // ○○● 只有右边在线：大角度右转 Only right on line: sharp right turn
     setCarMove(RIGHT_ROTATE, iCarSpeed);
   }
   else if (leftOnLine && midOnLine && rightOnLine) {
-    // ●●● 全在线内：直行
-    Serial.println("Forward on line");
+    // ●●● 全在线内：直行 All on line: go straight
     setCarMove(FORWARD, iCarSpeed);
   }
   else {
-    // ○○○ 全在线外：寻线策略
-    Serial.println("Searching...");
+    // ○○○ 全在线外：寻线策略 All off line: search strategy
     uTimeOut++;
     delay(20);
     if (uTimeOut > 100) {
       uTimeOut = 0;
       setCarMove(STOP, 0);
     } else {
-      // 原地旋转寻找黑线
       setCarMove(LEFT_ROTATE, iCarSpeed/2);
     }
   }
@@ -347,11 +340,10 @@ void Car_Track_Avoid() {
   delay(10);
   
   if (Distance > NearDistance) {
-    // 前方安全，继续巡线
+    // 前方安全，继续巡线 Front safe, continue line tracking
     PatrolCar(L_TRACK_PIN, M_TRACK_PIN, R_TRACK_PIN);
   } else {
-    // 检测到障碍物，开始避障绕行
-    Serial.println("Obstacle detected! Starting avoidance...");
+    // 检测到障碍物，开始避障绕行 Obstacle detected, start avoidance maneuver
     currentCarState = CAR_AVOIDING;
     avoidStartTime = millis();
     avoidStep = 0;
@@ -359,17 +351,25 @@ void Car_Track_Avoid() {
 }
 
 /**
- * @brief 寻找黑线功能 Find line function
+ * @brief 左转寻找黑线 Search for black line by turning left
  * @param 无 None
  * @retval 无 None
  */
-void Car_Find_Line() {
-  // 继续旋转寻找黑线
+void searchLineLeft() {
   setCarMove(LEFT_ROTATE, iCarSpeed);
-  
-  // 检查是否检测到黑线
   if (checkLineDetected()) {
-    Serial.println("Line found! Starting tracking...");
+    currentCarState = CAR_TRACKING;
+  }
+}
+
+/**
+ * @brief 右转寻找黑线 Search for black line by turning right
+ * @param 无 None
+ * @retval 无 None
+ */
+void searchLineRight() {
+  setCarMove(RIGHT, iCarSpeed);
+  if (checkLineDetected()) {
     currentCarState = CAR_TRACKING;
   }
 }
@@ -381,7 +381,7 @@ void Car_Find_Line() {
  */
 bool checkLineDetected() {
   int middleValue = analogRead(M_TRACK_PIN);
-  return (middleValue > Threshold);  // 中间传感器检测到黑线
+  return (middleValue > Threshold);
 }
 
 /**
@@ -390,9 +390,8 @@ bool checkLineDetected() {
  * @retval 无 None
  */
 void startRotationSequence() {
-  currentCarState = CAR_ROTATING;
+  currentCarState = CAR_INITIAL_ROTATING;
   rotateStartTime = millis();
-  Serial.println("Starting 270-degree rotation...");
 }
 
 /**
@@ -401,22 +400,14 @@ void startRotationSequence() {
  * @retval 无 None
  */
 void updateRotationState() {
-  unsigned long currentTime = millis();
-  unsigned long elapsedTime = currentTime - rotateStartTime;
+  unsigned long elapsedTime = millis() - rotateStartTime;
   
   if (elapsedTime < ROTATE_270_TIME) {
-    // 继续旋转270度
     setCarMove(LEFT_ROTATE, iCarSpeed);
-    Serial.print("Rotating: ");
-    Serial.print(elapsedTime);
-    Serial.print("/");
-    Serial.println(ROTATE_270_TIME);
   } else {
-    // 旋转完成，开始寻找黑线
-    Serial.println("270-degree rotation completed. Searching for line...");
-    currentCarState = CAR_FINDING_LINE;
+    currentCarState = CAR_SEARCH_LINE_LEFT;
     setCarMove(STOP, 0);
-    delay(500);  // 短暂停止
+    delay(500);
   }
 }
 
@@ -426,42 +417,25 @@ void updateRotationState() {
  * @retval 无 None
  */
 void performAvoidance() {
-  unsigned long currentTime = millis();
-  unsigned long elapsedTime = currentTime - avoidStartTime;
+  unsigned long elapsedTime = millis() - avoidStartTime;
   
   switch (avoidStep) {
-    case 0:  // 第一步：向左转避开障碍物
+    case 0:  // 第一步：向左转避开障碍物 Step 1: Turn left to avoid obstacle
       if (elapsedTime < AVOID_TURN_TIME) {
         setCarMove(LEFT, iCarSpeed);
-        Serial.println("Avoidance Step 1: Turning left");
       } else {
         avoidStep = 1;
-        avoidStartTime = currentTime;  // 重置计时器
-        Serial.println("Moving to step 2");
+        avoidStartTime = millis();
       }
       break;
       
-    case 1:  // 第二步：前进一段距离
+    case 1:  // 第二步：前进一段距离 Step 2: Move forward for a distance
       if (elapsedTime < AVOID_FORWARD_TIME) {
         setCarMove(FORWARD, iCarSpeed);
-        Serial.println("Avoidance Step 2: Moving forward");
       } else {
-        avoidStep = 2;
-        avoidStartTime = currentTime;  // 重置计时器
-        Serial.println("Moving to step 3");
-      }
-      break;
-      
-    case 2:  // 第三步：向右转回到原方向
-      if (elapsedTime < AVOID_TURN_TIME) {
-        setCarMove(RIGHT, iCarSpeed);
-        Serial.println("Avoidance Step 3: Turning right to resume course");
-      } else {
-        // 避障完成，返回巡线状态
-        Serial.println("Avoidance completed. Resuming line tracking.");
-        currentCarState = CAR_TRACKING;
+        currentCarState = CAR_SEARCH_LINE_RIGHT;
         setCarMove(STOP, 0);
-        delay(500);  // 短暂停止
+        delay(500);
       }
       break;
   }
@@ -476,10 +450,8 @@ bool setCarSwitch() {
   if (getKeyState(KEY_PIN) == Press_KEY) {
     bCar_Switch = !bCar_Switch;
     if (bCar_Switch) {
-      // 小车开启，开始旋转序列
       startRotationSequence();
     } else {
-      // 小车关闭
       currentCarState = CAR_STOP;
     }
   }
