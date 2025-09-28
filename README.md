@@ -13,12 +13,10 @@ VisionCruise‑V1/
 ├─ 如何运行程序的说明.md
 ├─ 架构设计文档.md
 ├─ 录制的demo视频.mp4
-└─ src/
-   ├─ main.ino
-   ├─ motor.h/.cpp
-   ├─ sensors.h/.cpp
-   ├─ camera.h/.cpp
-   └─ config.h
+└─ Car_tracking_Avoid/
+   └─ Car_tracking_Avoid.ino
+└─ ESP32_S3/
+   └─ ...
 ```
 
 ---
