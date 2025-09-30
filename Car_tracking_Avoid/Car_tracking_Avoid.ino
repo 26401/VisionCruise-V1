@@ -80,8 +80,8 @@ unsigned long rotateStartTime = 0;
 const unsigned long ROTATE_270_TIME = 2500;  // 旋转270度所需时间 Time required for 270-degree rotation
 
 unsigned long avoidStartTime = 0;
-const unsigned long AVOID_TURN_TIME = 800;   // 避障转弯时间 Obstacle avoidance turning time
-const unsigned long AVOID_FORWARD_TIME = 1500; // 避障前进时间 Obstacle avoidance forward time
+const unsigned long AVOID_TURN_TIME = 1400;   // 避障转弯时间 Obstacle avoidance turning time
+const unsigned long AVOID_FORWARD_TIME = 1400; // 避障前进时间 Obstacle avoidance forward time
 int avoidStep = 0;  // 避障步骤 Avoidance step
 
 // 函数声明 Function declarations
